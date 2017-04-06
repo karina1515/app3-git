@@ -1,0 +1,370 @@
+
+
+var rec =  (function () {
+
+	var COOKIE_NAME = 'hst';
+    var COOKIE_ENTRIES = 20;
+    var COOKIE_DOMAIN = '.elpais.com';
+	var SAMPLE_PERC = 5.0;
+	var COOKIE_EXPIRATION_DAYS = 60;
+
+	return {
+
+		getPageData: function() {
+			data = {};
+			var regexpNoticia = /\/([^\/]*)\/(\d+)\/(\d+)\/(\d+)\/([^\/]*)\/(\d+_\d+)\.html/i;
+			var result_re = regexpNoticia.exec(window.location.pathname);
+			data.tipoPagina = (result_re) ? "article" : "frontpage";   
+			if (data.tipoPagina=='article'){
+				data.portal= result_re[1];
+				data.seccion= result_re[5];
+				data.ts_ms = result_re[6];
+			}
+			return data;
+		},
+
+		getCookie: function (name) {
+    		var name = name + "=";
+    		var decodedCookie = decodeURIComponent(document.cookie);
+    		var ca = decodedCookie.split(';');
+    		for(var i = 0; i <ca.length; i++) {
+        		var c = ca[i];
+        		while (c.charAt(0) == ' ') {
+            		c = c.substring(1);
+        		}
+        		if (c.indexOf(name) == 0) {
+            		return c.substring(name.length, c.length);
+        		}
+    		}
+    		return "";
+		},
+
+		setCookie: function (name, cvalue, exdays) {
+    		var d = new Date();
+    		d.setTime(d.getTime() + (exdays*24*60*60*1000));
+    		var expires = "; expires="+ d.toUTCString();
+    		var domain = "; domain="+ COOKIE_DOMAIN;
+			var path =  ";path=/";
+    		document.cookie = name + "=" + cvalue + domain + expires + path;
+		},
+
+		updateHistory: function(hist, newid) {
+			var hist_array = hist ? hist.split(',') : []; // '' is false
+
+			// newer on top, fixing length
+			hist_array.splice(0, 0, newid);
+			if (hist_array.length > COOKIE_ENTRIES)
+				hist_array.splice(COOKIE_ENTRIES, hist_array.length - COOKIE_ENTRIES);
+			hist = hist_array.join();
+			return hist;
+		},
+
+		myRenderFunction: function(idioma, rel, data) {
+
+			var articulo = '';    
+			var articulos = '';
+			var s_author = '';
+			var descripcion = '';
+			var titulo = '';
+			var items = data.response.items;   
+			var numRelacionadas = items.length;
+			var tpls = this.getPlantilla(idioma);
+			var cabecera=tpls[0];
+			var plantilla_articulo=tpls[1];
+			var final_html=tpls[2];
+			var bloque_miniatura=tpls[3];
+			var bloque_firma=tpls[4];
+
+			for (var i = 0; i < numRelacionadas; i++) {
+				var item = items[i];            
+				articulo = plantilla_articulo; 
+				var regexImagen = /W*\/imagenes|videos\/(\d+)\/(\d+)\/(\d+)\/W*/;
+				var esImagenEditorial = regexImagen.exec(item['dominantimage']);      
+				if (esImagenEditorial){
+					var imagenSinProtocolo = item['dominantthumbnail'].replace('http://','//');
+					articulo = articulo.replace(/##CX_IMAGE##/g,imagenSinProtocolo);
+				}
+				else {
+					articulo = articulo.replace(bloque_miniatura,'');
+				}  
+
+				var cx_url = item['click_url'];
+				var queryChar = cx_url.indexOf('?') == -1 ? '?' : '&';        
+				articulo = articulo.replace(/##CX_URL##/g,cx_url+queryChar+'rel='+rel); 
+				var titulo = item['title'];
+				articulo = articulo.replace(/##CX_TITLE##/g,titulo);
+				s_author = item['recs-author'];
+				var lineasAutor = 0;        
+				if (s_author!='' && s_author.toLowerCase()!='ediciones el país'){
+					lineasAutor = 1;
+					articulo = articulo.replace(/##CX_AUTHOR##/g,s_author);
+				}
+				else{
+					articulo = articulo.replace(bloque_firma,'');
+				}        
+
+				descripcion = item['description'] || "";         
+				if (descripcion.length>270) {
+					var lineasTitulo = 0;
+					var longTitulo=titulo.length;
+					if (longTitulo<30) {
+						lineasTitulo = 1
+					}    
+					else if (longTitulo<55) 
+						lineasTitulo = 2
+					else 
+						lineasTitulo = 3    
+					var lineasTituloMasAutor = lineasTitulo + lineasAutor;
+					switch(lineasTituloMasAutor) {
+						case 0:
+							limiteCaracteresDescripcion=0;
+							break;
+						case 1:
+							limiteCaracteresDescripcion=181;
+							break;
+						case 2:
+							limiteCaracteresDescripcion=170;
+							break;
+						case 3:
+							limiteCaracteresDescripcion=210;              
+							break;
+						default:
+							limiteCaracteresDescripcion=205;                
+					}
+					if (esImagenEditorial)
+						descripcion = descripcion.substring(0,limiteCaracteresDescripcion);    
+					else
+						descripcion = descripcion.substring(0,205);    
+					descripcion=descripcion.substring(0,descripcion.lastIndexOf(" "));
+					descripcion = descripcion+"...";
+				}                        
+
+				articulo = articulo.replace(/##CX_DESCRIPTION##/g,descripcion);
+				articulos += articulo;
+			}    
+			var caja_relacionadas = cabecera+articulos+final_html;    
+			document.getElementById("caja_relacionadas_cxense").innerHTML = caja_relacionadas;
+			document.getElementById('caja_relacionadas_cxense').className = 'caja caja_relacionadas';
+		},
+		
+		getPlantilla: function(idioma) {
+			var cabecera, bloque_firma, bloque_miniatura, plantilla_articulo, final_html;
+			final_html = '';
+			switch(idioma){
+				case 'pt':
+					cabecera='<h3><span class="sin_enlace"></span>Pode te interessar</h3>';
+					bloque_firma = '<div class="firma_comentarios"><span class="autor">##CX_AUTHOR##</span></div>';
+					bloque_miniatura = '<div class="miniatura"><div class="foto figure"><a title="Ver notícia" href="##CX_URL##"><img src="##CX_IMAGE##" width="140" height="100" title="" alt=""></a></div></div>';
+					plantilla_articulo = '<div class="article  estirar">'+ bloque_miniatura +'<h4><a title="Ver notícia" href="##CX_URL##">##CX_TITLE##</a></h4>' + bloque_firma + '<p>##CX_DESCRIPTION##</p></div>';
+					break;
+				case 'ca':
+					cabecera='<h3><span class="sin_enlace"></span>Us pot interessar</h3>';
+					bloque_firma = '<div class="firma_comentarios"><span class="autor">##CX_AUTHOR##</span></div>';
+					bloque_miniatura = '<div class="miniatura"><div class="foto figure"><a title="Veure notícia" href="##CX_URL##"><img src="##CX_IMAGE##" width="140" height="100" title="" alt=""></a></div></div>';
+					plantilla_articulo = '<div class="article  estirar">'+ bloque_miniatura +'<h4><a title="Veure notícia" href="##CX_URL##">##CX_TITLE##</a></h4>' + bloque_firma + '<p>##CX_DESCRIPTION##</p></div>';
+					break;
+				case 'en':
+					cabecera='<h3><span class="sin_enlace"></span>You may also like</h3>';
+					bloque_firma = '<div class="firma_comentarios"><span class="autor">##CX_AUTHOR##</span></div>';
+					bloque_miniatura = '<div class="miniatura"><div class="foto figure"><a title="See article" href="##CX_URL##"><img src="##CX_IMAGE##" width="140" height="100" title="" alt=""></a></div></div>';
+					plantilla_articulo = '<div class="article  estirar">'+ bloque_miniatura +'<h4><a title="See article" href="##CX_URL##">##CX_TITLE##</a></h4>' + bloque_firma + '<p>##CX_DESCRIPTION##</p></div>';
+					break;
+				case 'es':
+				default:
+					cabecera='<h3><span class="sin_enlace"></span>Te puede interesar</h3>';
+					bloque_firma = '<div class="firma_comentarios"><span class="autor">##CX_AUTHOR##</span></div>';
+					bloque_miniatura = '<div class="miniatura"><div class="foto figure"><a title="Ver noticia" href="##CX_URL##"><img src="##CX_IMAGE##" width="140" height="100" title="" alt=""></a></div></div>';
+					plantilla_articulo = '<div class="article  estirar">'+ bloque_miniatura +'<h4><a title="Ver noticia" href="##CX_URL##">##CX_TITLE##</a></h4>' + bloque_firma + '<p>##CX_DESCRIPTION##</p></div>';
+			} 
+			return [cabecera,plantilla_articulo, final_html, bloque_miniatura, bloque_firma];
+		},
+
+		doRec: function(idioma) {
+			var data = this.getPageData();
+			var hist = this.getCookie(COOKIE_NAME);
+
+			var cerrojo = this.getCookie('strtest');
+			if (!cerrojo) {
+				rec.Cxense.doRec(idioma, data);
+			}
+			else {
+				if (data.tipoPagina=='article'){
+					var hist = this.getCookie(COOKIE_NAME);
+					hist = this.updateHistory(hist, data.ts_ms);
+		   			this.setCookie(COOKIE_NAME, hist, COOKIE_EXPIRATION_DAYS);
+					rec.Str.doRec(idioma, data, hist);
+				}
+			}
+		},
+			
+		doRec2: function(idioma) {
+			
+			var data = this.getPageData();
+			var hist = this.getCookie(COOKIE_NAME);
+
+			// Str no aplicable a paginas no en es
+			if (idioma != 'es') hist = 'no';
+
+			// New user
+			if (hist == '') {
+				var rnd = Math.random() * 100.0;
+				if (rnd >= SAMPLE_PERC) {
+					hist = 'no';
+		    		this.setCookie(COOKIE_NAME, hist, COOKIE_EXPIRATION_DAYS);
+				}
+			}
+
+			// User out of sample
+			if (hist == 'no') {
+				rec.Cxense.doRec(idioma, data);
+			}
+			else {
+				if (data.tipoPagina=='article'){
+					// User in the sample
+					hist = this.updateHistory(hist, data.ts_ms);
+		   			this.setCookie(COOKIE_NAME, hist, COOKIE_EXPIRATION_DAYS);
+					rec.Str.doRec(idioma, data, hist);
+				}
+			}
+		}
+	}
+})();
+
+
+rec.Str = (function () {
+
+	return {
+
+
+		doAjaxJsonP: function(url, params, onsuccess) {
+
+			var that = this;
+   			var p_arr = [];
+   			for (p in params)
+     			p_arr.push(encodeURIComponent(p) + '=' + encodeURIComponent(params[p]));
+			var p_str =  p_arr.join('&');
+
+			if (p_str) 
+				url +=  '?' + p_str;
+
+			window[params.callback] = function(data) {
+				onsuccess.call(that, data);
+			};
+				
+			var script = document.createElement('script');
+			script.type = 'text/javascript'; script.async = 'async';
+			script.src = url;
+			var target = document.getElementsByTagName('script')[0];
+			target.parentNode.insertBefore(script, target); 
+		},
+
+		doRec: function(idioma, page_data, hist) {
+			
+			this.doAjaxJsonP(
+				window.location.protocol + "//recomendador.prisa.com/recommendation/request",
+				{
+					callback: 'jsonp'+Math.round(Math.random()*10000),
+					section: page_data.portal,
+					lang: idioma,
+					header: page_data.seccion,
+					userId: window.PEPuid,
+					news: hist
+				},
+				function(r) {
+					rec.myRenderFunction(idioma, 'str_articulo', r);
+				}
+			)
+		}
+	}
+})();
+
+rec.Cxense = (function () {
+
+	var ID_SITE   = '9222334054942283911';
+
+	return {
+
+		pushCxense: function(){
+			if(seccion == 'eps' || seccion == 'babelia'){
+				return;
+			}	
+		
+			cX.callQueue.push(['setSiteId', ID_SITE]);
+			cX.callQueue.push(['invoke', function() {
+			if (typeof PEPuname !== 'undefined') {
+				cX.addExternalId({ type: 'pri', id: PEPuid });}
+			}]);
+			
+			cX.callQueue.push(['sendPageViewEvent']);	
+		},
+		
+		incluirMeta: function(nombreMeta,valorMeta){
+			meta = document.createElement('meta');
+			meta.setAttribute('name', nombreMeta);
+			meta.setAttribute('content', valorMeta);
+			document.getElementsByTagName('head')[0].appendChild(meta);
+		},
+
+		doRec: function(idioma, page_data) {
+	    if (data.portal == "economia") {
+	    	var ID_WIDGET = '1fbdbb7910bdff541098512aa90b314bde657180';
+	    }
+	    else {
+	    	var ID_WIDGET = 'afcd8a584ac575965879de69de3c462fffbe04f9';
+	    }
+			window.cX = window.cX || {}; 
+			window.cX.callQueue = window.cX.callQueue || [];
+
+			// renderFunction: func... Usamos una funcion lamda para que se fije el this como rec
+			cX.callQueue.push([
+				'insertWidget',
+				{ widgetId: ID_WIDGET, renderFunction: function(data) { rec.myRenderFunction(idioma, 'cx_articulo', data) } },    
+				{ context: {categories:{language:idioma} } }
+			]);
+
+			if (typeof(listado_norm_tags) != "undefined") {	
+				var TAGS = listado_norm_tags.split(",");
+				var it;
+				var meta;
+				for (it=0; it<TAGS.length; it++) {
+					this.incluirMeta('cXenseParse:pri-collabulary',TAGS[it]);
+				}
+			}
+			if (typeof(listado_autores_bonito) != "undefined") {	
+				var TAGS = listado_autores_bonito.split(",");
+				var it;
+				var meta;
+				for (it=0; it<TAGS.length; it++) {
+					this.incluirMeta('cXenseParse:pri-autor',TAGS[it]);		
+				}
+			}
+
+			this.incluirMeta('cXenseParse:pageclass',page_data.tipoPagina);
+			if (page_data.tipoPagina=='article'){
+				var id_articulo = page_data.portal+"_"+page_data.seccion+"_"+page_data.ts_ms;
+				this.incluirMeta('cXenseParse:recs:articleid',id_articulo);
+			}
+
+			try {
+				var script = document.createElement('script');
+				script.type = 'text/javascript'; script.async = 'async';
+				script.src = ('https:' == document.location.protocol) ?
+						'https://scdn.cxense.com/cx.js' :
+						'http://cdn.cxense.com/cx.js';
+				var target = document.getElementsByTagName('script')[0];
+				var that = this;
+				script.addEventListener('load', function (e) { 
+					that.pushCxense();
+				}, false);
+				target.parentNode.insertBefore(script, target); 
+			}
+			catch (e) {};
+		}
+	};
+})();
+			
+function EpetwidgetCxense(idioma){
+	if(idioma == null) idioma = 'es';
+	rec.doRec(idioma);
+}
+

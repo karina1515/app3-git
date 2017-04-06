@@ -1,0 +1,58 @@
+	var currentTab = 0;
+	var tabTimer
+
+	var $jQ = jQuery.noConflict();
+
+	$jQ(document).ready(function(){
+    
+		$jQ(".hom #tab1").mouseenter(function(){
+			clearTimeout(tabTimer);
+			showTab(1);
+		});
+		$jQ(".hom #tab2").mouseenter(function(){
+			clearTimeout(tabTimer);
+			showTab(2);
+		});
+		$jQ(".hom #tab3").mouseenter(function(){
+			clearTimeout(tabTimer);
+			showTab(3);
+		})
+		for(var i = 1; i < 4; i++){
+			$jQ(".hom #content" + i).mouseenter(function(){
+				clearTimeout(tabTimer);
+			})
+		}
+		
+		//$("#contentBlind").css({visibility:"hidden"});
+		$jQ(".hom #feature .content").css({visibility:"visible"});
+		$jQ(".hom #contentBlind").fadeOut("def", function(){flipTimer()});
+		//flipTimer();
+	})
+
+
+	function flipTimer(){
+		if(currentTab <= 0) currentTab = 3;
+		showTab(currentTab);
+		tabTimer = setTimeout("flipTimer()", 8000);
+		currentTab--
+	}	
+
+	function showTab(tabNo){
+		var posTab;
+		posTab = (3 - tabNo) * -91
+		posTab = "0 " + posTab + "px";
+
+		$jQ(".hom #feature-tabs").animate({backgroundPosition: posTab}, "fast");
+		$jQ(".hom #content" + tabNo).fadeIn("slow", (function(){$jQ(".hom #content" + tabNo + " > .padder").animate({left:"0"}, "slow");}));
+
+		for(var x=1; x < 4; x++){
+			if(x != tabNo){
+				hideTabContent(x);
+			}
+		}
+	}	
+	
+	function hideTabContent(tabNo){
+		$jQ(".hom #content" + tabNo).fadeOut("slow", function(){$jQ(".hom #content" + tabNo + " > .padder").css({left:"442px"});});
+	}
+
